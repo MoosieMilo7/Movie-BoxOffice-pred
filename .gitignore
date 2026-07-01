@@ -2,6 +2,13 @@
 node_modules/
 frontend/node_modules/
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
 # Environment & secrets
 .env
 .env.local
@@ -11,7 +18,7 @@ frontend/node_modules/
 *.db
 *.db-shm
 *.db-wal
-db/
+/db/
 
 # Build output
 frontend/dist/
