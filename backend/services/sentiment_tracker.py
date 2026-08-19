@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import anthropic
@@ -60,7 +61,8 @@ Comments: {stats['comment_count']:,}
             temperature=0,
             system=(
                 'You are a social-buzz analyst scoring pre-release film sentiment from YouTube trailer engagement.\n'
-                'Output ONLY a single-line JSON object, no markdown fences, no prose:\n'
+                'Respond with EXACTLY one JSON object and nothing else — no markdown fences, no prose, '
+                'no self-correction, no second attempt. Your entire reply must be parseable as JSON on its own:\n'
                 '{"score": <int 0-5>, "label": "<dead|cool|warm|hot|viral>", "one_line": "<short observation, max 12 words>"}\n'
                 'Guidance: 0=dead (no engagement), 1=cool, 2=warm (healthy interest), 3=hot (strong buzz), '
                 '4=very hot, 5=viral (exceptional, tentpole-level).\n'
@@ -70,9 +72,15 @@ Comments: {stats['comment_count']:,}
             messages=[{'role': 'user', 'content': user_msg}],
         )
         text = ''.join(b.text for b in resp.content if b.type == 'text').strip()
-        data = json.loads(text)
-        score = max(0, min(5, int(data['score'])))
-        return score, data['label'], data['one_line']
+        candidates = re.findall(r'\{[^{}]*\}', text, re.DOTALL)
+        for candidate in reversed(candidates):
+            try:
+                data = json.loads(candidate)
+                score = max(0, min(5, int(data['score'])))
+                return score, data['label'], data['one_line']
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                continue
+        raise ValueError(f'no parseable JSON object in response: {text!r}')
     except Exception as e:
         print(f'[SENTIMENT] Claude scoring failed, using fallback: {e}')
         return _fallback_score(stats['view_count'])
