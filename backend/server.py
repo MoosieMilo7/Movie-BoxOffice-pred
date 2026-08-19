@@ -1,5 +1,6 @@
 import os
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -7,13 +8,29 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .db.database import db
 from .routes.films import router as films_router
+from .services.sentiment_tracker import refresh_due_sentiment, REFRESH_INTERVAL_HOURS
 
 _start_time = time.time()
+scheduler = AsyncIOScheduler()
 
-app = FastAPI(title='Box Office Predictor', version='2.0.0')
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.add_job(
+        refresh_due_sentiment, 'interval', hours=REFRESH_INTERVAL_HOURS,
+        next_run_time=datetime.now(timezone.utc), id='sentiment_refresh',
+    )
+    scheduler.start()
+    print(f'[server] sentiment tracker scheduled every {REFRESH_INTERVAL_HOURS}h')
+    yield
+    scheduler.shutdown()
+
+
+app = FastAPI(title='Box Office Predictor', version='2.0.0', lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
